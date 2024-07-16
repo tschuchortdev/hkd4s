@@ -10,6 +10,8 @@ ThisBuild / scalacOptions ++= Seq(
   // "-explain",
   "-Xcheck-macros",
   "-Ycheck:all", // also for checking macros
+  "-Ycheck-mods",
+  "-Ydebug-type-error",
   "-Xprint-types", // Without this flag, we will not see error messages for exceptions during given-macro expansion!
   "-Yshow-print-errors",
   "-language:experimental.macros",
@@ -19,6 +21,7 @@ ThisBuild / scalacOptions ++= Seq(
   "-language:saferExceptions",
   "-language:dynamics",
   "-language:numericLiterals",
+  // "-Ykind-projector:underscores",
   "-unchecked",
   // "-Ysafe-init", // Note: causes warnings when used with Shapeless 3 recursive derivation
   // "-Yexplicit-nulls", // Make reference types non-nullable: String != String|Null

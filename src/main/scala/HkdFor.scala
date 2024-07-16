@@ -18,11 +18,15 @@ import scala.util.NotGiven
 import scala.util.boundary
 import scala.annotation.experimental
 import scala.annotation.static
+import scala.runtime.Tuples
+import scala.runtime.TupleXXL
 import internal.{*, given}
 
 type HkdFor_[T] = [F[_]] =>> HkdFor[T, F]
 
 object HkdFor_ :
+  def apply[T] = new PartialApplHelper[T]
+
   class PartialApplHelper[T] extends Dynamic:
     // noinspection TypeAnnotation
     inline def applyDynamic[F[_]](methodName: "apply")(inline args: Any*) =
@@ -38,23 +42,46 @@ object HkdFor_ :
     /** When an unapply method like this is called and `F` is not explicitly given, then `F` can not be inferred correctly:
       * {{{
       *    HkdFor_[Foo][Option](???) match
-      *      case HkdFor_[Foo](a, b, c) => ??? // F is inferred as some unkown F$1 instead of Option
+      *      case HkdFor_[Foo](a, b, c) => ??? // F is inferred as some unknown F$1 instead of Option
       * }}}
-      * The compiler will immediately instantiate `F` with some type and only ''then'' consider the parameter [[h]]. Since [[h]]
-      * will not match up with the abstract inferred type `HkdFor[T, F$1 >: [_] =>> Nothing <: [_] =>> Any]`, the compiler will
-      * look for a [[TypeTest]] to do the conversion. We can use that fact as a workaround by employing the [[TypeTest]]
-      * [[HkdFor.typeTestUnapplyInferenceHelper]] to save the real `F` of [[h]] in the member type of
-      * [[HkdFor.UnapplyInferenceHelper]].
+      * Because a type test introduces a level of indirection and the inference algorithm cannot "carry" the F through multiple
+      * levels of indirection. We need to apply the type test ourselves, so that we remain in control of type inference.
       */
-    @targetName("unapplyWithInferenceHelper")
-    inline def unapply[F1[_]](
-        inline h: HkdFor_[T][[_] =>> Any] & HkdFor.UnapplyInferenceHelper { type F[_] = F1[_] }
-    )(using m: Mirror.ProductOf[T]): Tuple.Map[m.MirroredElemTypes, F1] =
-      HkdFor.unapply[T, F1](h)
+    transparent inline def unapply[S, F[_]](using inline m: Mirror.ProductOf[T])(using
+        tt: TypeTest[com.tschuchort.hkd.HkdFor$package.HkdFor[S, F], com.tschuchort.hkd.HkdFor$package.HkdFor[T, F]])(
+        h: com.tschuchort.hkd.HkdFor$package.HkdFor[S, F]
+    ): Option[Any] | Boolean = ${ unapplyWithTypeTestImpl[T, S, F]('h, 'tt, 'm) }
 
-  def apply[T] = new PartialApplHelper[T]
+  private def unapplyWithTypeTestImpl[T: Type, S: Type, F[_]: Type](using q: Quotes)(
+      h: Expr[com.tschuchort.hkd.HkdFor$package.HkdFor[S, F]],
+      tt: Expr[TypeTest[com.tschuchort.hkd.HkdFor$package.HkdFor[S, F], com.tschuchort.hkd.HkdFor$package.HkdFor[T, F]]],
+      m: Expr[Mirror.ProductOf[T]]
+  ): Expr[Option[Any]] | Expr[Boolean] =
+    import q.reflect.{*, given}
 
-opaque type HkdFor[+T, F[_]] <: Dynamic & Product & Selectable = HkdForImpl[T]
+    val fieldTypes = m match
+      case '{
+            type elems <: Tuple;
+            $m: Mirror.Product { type MirroredElemTypes = `elems` }
+          } =>
+        tupleToTypes[elems].map { case '[field] => TypeRepr.of[F[field]] }
+
+    fieldTypes.length match
+      case 0 => '{ ${ tt }.unapply($h).isDefined }
+      case l if l <= Tuples.MaxSpecialized =>
+        type TupleL <: Tuple
+        given Type[TupleL] = Symbol.classSymbol("scala.Tuple" + l).typeRef
+          .appliedTo(fieldTypes.toList).asType.asInstanceOf
+
+        '{
+          ${ tt }.unapply($h).map { (x: com.tschuchort.hkd.HkdFor$package.HkdFor[T, F]) =>
+            Tuples.fromProduct(x).asInstanceOf[TupleL]
+          }: Option[TupleL]
+        }
+
+      case _ => report.errorAndAbort(s"Only types with 0 to ${Tuples.MaxSpecialized} fields are supported by this extractor", h)
+
+opaque type HkdFor[T, F[_]] <: Dynamic & Product = HkdForImpl[T]
 // ^ opaque type can not have `Product & Selectable` bounds or the warning for "type test can not be checked at runtime" will not
 // appear for some reason, despite the fact that those interfaces are not `Matchable`. Subtype relations should instead be supplied
 // by given <:< instances or implicit conversions.
@@ -75,7 +102,7 @@ private def copyDynamicNamedImpl[T: Type, F[_]: Type](
     argsExpr: Expr[Seq[Any | (String, Any)]]
 )(using q: Quotes) =
   import q.reflect.{*, given}
-  requireDynamicMethodName(expectedName = "copy", name = methodNameExpr, methodOwnerType = TypeRepr.of[HkdFor])
+  requireDynamicMethodName(expectedName = "copy", name = methodNameExpr, methodOwnerType = TypeRepr.of[HkdFor[T, F]])
 
   val paramNamesTypesValues: Seq[(Option[String], TypeRepr, Expr[Any])] = parseDynamicArgsExpr(argsExpr)
 
@@ -94,7 +121,8 @@ private def copyDynamicNamedImpl[T: Type, F[_]: Type](
 
   val ctorArgs = Expr.ofSeq(normalizedParams.map { case (name, _, expr) => Expr.ofTuple((Expr(name), expr)) })
 
-  val (tClass, tName, fName) = Expr.summonAllOrAbort[(HkdFor.TypeTag[T], TypeName[T], TypeName[F])]
+  val (tClass, tName, fName) =
+    Expr.summonAllOrAbort[(HkdFor.TypeTag[T], TypeName[T], TypeName[F])]
 
   '{
     new HkdForImpl[T](${ ctorArgs }*)(using $tMirror, $tName, $tClass)
@@ -103,33 +131,16 @@ private def copyDynamicNamedImpl[T: Type, F[_]: Type](
 
 object HkdFor extends Dynamic:
 
-  /** Helper class to improve type inference in combination with [[typeTestUnapplyInferenceHelper]] and one of the
-    * [[HkdFor_$.PartialApplHelper.unapply]] methods. See their docs for more information.
-    */
-  transparent trait UnapplyInferenceHelper private ():
-    type F[_]
-
-  /** This [[TypeTest]] is used by the compiler in combination with one of the [[HkdFor_$.PartialApplHelper.unapply]] methods to
-    * capture [[F]] in a type member, so that we can work around a type inference issue. See docs of the unapply method for more
-    * info.
-    */
-  inline given typeTestUnapplyInferenceHelper[T, F1[_]]
-      : TypeTest[HkdFor[T, F1], HkdFor[T, [_] =>> Any] & UnapplyInferenceHelper { type F[X] = F1[X] }] with {
-    override def unapply(x: HkdFor[T, F1]): Some[
-      x.type & HkdFor[T, [_] =>> Any] & UnapplyInferenceHelper { type F[X] = F1[X] }
-    ] =
-      Some(x.asInstanceOf)
-  }
-
-  given typeTestStaticUpcast[T, S <: T, F[_], G[_]](using
+  /*given typeTestStaticUpcast[T, S <: T, F[_], G[_]](using ImplicitsPriority.L4)(using
       HkdFor[S, F] <:< HkdFor[T, G]
   ): TypeTest[HkdFor[S, F], HkdFor[T, G]] with {
     override def unapply(x: HkdFor[S, F]): Some[x.type & HkdFor[T, G]] =
+      println("typeTestStaticUpcast")
       Some(x.asInstanceOf[x.type & HkdFor[T, G]])
-  }
+  }*/
 
-  given typeTestDowncastDynamicTComplexF[T, S, F[_], G[_]](using sClass: TypeTag[S])(using
-      HkdFor[S, G] <:< HkdFor[S, F]
+  given typeTestDowncastDynamicTComplexF[T, S <: T, F[_], G[_]](using ImplicitsPriority.L3)(using sClass: TypeTag[S])(using
+      com.tschuchort.hkd.HkdFor$package.HkdFor[S, G] <:< com.tschuchort.hkd.HkdFor$package.HkdFor[S, F]
   ): TypeTest[HkdFor[T, G], HkdFor[S, F]] with {
     override def unapply(x: HkdFor[T, G]): Option[x.type & HkdFor[S, G]] =
       x match // in this scope we know that HkdFor =:= (HkdForImpl <: Matchable)
@@ -138,18 +149,19 @@ object HkdFor extends Dynamic:
         case _ => None
   }
 
-  given typeTestDowncastDynamicTSimpleF[T, S <: T, F[_], G <: F[_]](using
+  given typeTestDowncastDynamicTSimpleF[T, S <: T, F[_], G <: [A] =>> F[A]](using ImplicitsPriority.L4)(using
       sClass: TypeTag[S]
-  ): TypeTest[com.tschuchort.hkd.HkdFor$package.HkdFor[T, G], com.tschuchort.hkd.HkdFor$package.HkdFor[S, F]] with {
+  ): TypeTest[com.tschuchort.hkd.HkdFor$package.HkdFor[T, G], com.tschuchort.hkd.HkdFor$package.HkdFor[S, F]]
+  with {
     override def unapply(x: com.tschuchort.hkd.HkdFor$package.HkdFor[T, G])
         : Option[x.type & com.tschuchort.hkd.HkdFor$package.HkdFor[S, F]] =
       x match // in this scope we know that HkdFor =:= (HkdForImpl <: Matchable)
         case _x: (x.type & HkdForImpl[?]) if (_x.tClass <:< sClass) =>
-          Some(_x.asInstanceOf[x.type & HkdFor[S, F]])
+          Some(_x.asInstanceOf[x.type & com.tschuchort.hkd.HkdFor$package.HkdFor[S, F]])
         case _ => None
   }
 
-  given typeTestHkdForErasedF[T](using
+  given typeTestHkdForErasedF[T](using ImplicitsPriority.L2)(using
       tClass: TypeTag[T]
   ): TypeTest[HkdFor[Any, [_] =>> Any], HkdFor[T, [_] =>> Any]] with {
     override def unapply(x: HkdFor[Any, [_] =>> Any]): Option[x.type & HkdFor[T, [_] =>> Any]] =
@@ -159,7 +171,7 @@ object HkdFor extends Dynamic:
         case _ => None
   }
 
-  given typeTestHkdForErasedTErasedF: TypeTest[Matchable, HkdFor[Any, [_] =>> Any]] with {
+  given typeTestHkdForErasedTErasedF(using ImplicitsPriority.L1): TypeTest[Matchable, HkdFor[Any, [_] =>> Any]] with {
     override def unapply(x: Matchable): Option[x.type & HkdFor[Any, [_] =>> Any]] =
       x match
         case _x: (x.type & HkdForImpl[?]) =>
@@ -167,10 +179,14 @@ object HkdFor extends Dynamic:
         case _ => None
   }
 
-  inline given typeTestFallbackUnrelatedClasses[T, S, F[_], G[_]](
-      using NotGiven[T <:< S]): TypeTest[HkdFor[S, F], HkdFor[T, G]] =
+  inline given typeTestFallbackUnrelatedClasses[T, S, F[_], G[_]](using ImplicitsPriority.L1)(
+      using
+      NotGiven[T <:< S],
+      NotGiven[S <:< T])
+      : TypeTest[com.tschuchort.hkd.HkdFor$package.HkdFor[S, F], com.tschuchort.hkd.HkdFor$package.HkdFor[T, G]] =
     error(
-      "this case is unreachable since " + showType[HkdFor[S, F]] + " and " + showType[HkdFor[T, G]] +
+      "this case is unreachable since " + showType[com.tschuchort.hkd.HkdFor$package.HkdFor[S, F]] + " and " + showType[
+        com.tschuchort.hkd.HkdFor$package.HkdFor[T, G]] +
         " are unrelated. " + showType[T] + " is not a subtype of " + showType[S]
     )
 
@@ -181,7 +197,7 @@ object HkdFor extends Dynamic:
   /** Subtype relationship where the type functions are simple subtypes of each other, for example forall `A`. `Some[A] <:
     * Option[A]` by definition.
     */
-  given subtypeWithObviousF[T, S <: T, G[_], F <: G[_]](using ImplicitsPriority.L2): (HkdFor[S, F] <:< HkdFor[T, G]) =
+  given subtypeWithObviousF[T, S <: T, G[_], F <: [A] =>> G[A]](using ImplicitsPriority.L2): (HkdFor[S, F] <:< HkdFor[T, G]) =
     scala.<:<.refl.asInstanceOf
 
   /** Subtype relationship where the type functions are not related to each other by definition, for example two match type
@@ -245,16 +261,11 @@ object HkdFor extends Dynamic:
 
     '{ scala.<:<.refl.asInstanceOf[HkdFor[S, F] <:< HkdFor[T, G]] }
 
-  // noinspection ScalaWeakerAccess
-  class MatchExhaustivelyHelper[T, F[_]](self: HkdFor[T, F]) {
-    transparent inline def apply(using m: Mirror.SumOf[HkdFor[T, F]])(
-        inline matchExpression: HkdFor[T, F] => Any
-    ): Any = ${ matchExhaustivelyImpl[T, F]('self, 'matchExpression, 'm) }
-  }
-
   extension [T, F[_]](self: HkdFor[T, F])
     @experimental
-    infix def matchExhaustively = new MatchExhaustivelyHelper[T, F](self)
+    transparent inline infix def matchExhaustively(using m: Mirror.SumOf[HkdFor[T, F]])(
+        inline matchExpression: HkdFor[T, F] => Any
+    ) = ${ matchExhaustivelyImpl[T, F]('self, 'matchExpression, 'm) }
 
   private def matchExhaustivelyImpl[T: Type, F[_]: Type](
       self: Expr[HkdFor[T, F]],
@@ -262,6 +273,10 @@ object HkdFor extends Dynamic:
       m: Expr[Mirror.Of[HkdFor[T, F]]]
   )(using q: Quotes): Expr[Any] =
     import q.reflect.{*, given}
+    val diagnosticPosition = Position(
+      self.asTerm.pos.sourceFile,
+      start = expr.asTerm.pos.start - ("matchExhaustively".length + 1),
+      end = expr.asTerm.pos.start + 1)
 
     val expectedCases = m match
       case '{ $m: Mirror.ProductOf[s] } => Seq(TypeRepr.of[com.tschuchort.hkd.HkdFor$package.HkdFor[T, F]])
@@ -296,44 +311,55 @@ object HkdFor extends Dynamic:
 
       case _ => report.errorAndAbort("Must be a lambda with top-level match expression", expr)
 
-    def computeMatchedType(caseDefPattern: Tree): Seq[TypeRepr] = caseDefPattern match
-      case Alternatives(patterns) => patterns.flatMap(computeMatchedType)
+    def computeMatchedType(caseDefPattern: Tree): Seq[TypeRepr] =
+      try
+        caseDefPattern match
+          case Wildcard() => List(TypeRepr.of[Any])
 
-      case TypedOrTest(_, tpt) =>
-        assert(tpt.symbol.isType)
-        List(tpt.tpe)
+          case Alternatives(patterns) => patterns.flatMap(computeMatchedType)
 
-      case Bind(bindName, tr) =>
-        assert(tr.symbol.isType)
-        List(tr.symbol.typeRef.widenByName)
+          case TypedOrTest(_, tpt) =>
+            assert(tpt.symbol.isType)
+            List(tpt.tpe)
 
-      case Unapply(fun @ Select(Apply(TypeApply(_, typeArgs), _), "unapply"), implicits, bindPatterns) =>
-        fun.tpe.widenTermRefByName match
-          // A MethodType is a regular method taking term parameters, a PolyType is a method taking type parameters,
-          // a TypeLambda is a method returning a type and not a value. Unapply's type should be a function with no
-          // type parameters, with a single value parameter (the match scrutinee) and with an Option[?] return type
-          // (no curried function), thus it should be a MethodType.
-          case methodType: MethodType =>
-            methodType.resType.asType match
-              // Also matches Some[] and None in an easy way
-              case '[Option[tpe]] => TypeRepr.of[tpe] match
-                  case AndType(left, right)
-                      if methodType.paramTypes.nonEmpty && left =:= methodType.param(0) => List(right)
+          case Bind(bindName, tr) =>
+            assert(tr.symbol.isType)
+            List(tr.symbol.typeRef.widenByName)
 
-                  case AndType(left, right)
-                      if methodType.paramTypes.nonEmpty && right =:= methodType.param(0) => List(left)
+          case Unapply(fun /*@ Select(Apply(TypeApply(_, typeArgs), _), "unapply")*/, implicits, bindPatterns) =>
+            fun.tpe.widenTermRefByName match
+              // A MethodType is a regular method taking term parameters, a PolyType is a method taking type parameters,
+              // a TypeLambda is a method returning a type and not a value. Unapply's type should be a function with no
+              // type parameters, with a single value parameter (the match scrutinee) and with an Option[?] return type
+              // (no curried function), thus it should be a MethodType.
+              case methodType: MethodType =>
+                methodType.resType.asType match
+                  // Also matches Some[] and None in an easy way
+                  case '[Option[tpe]] => TypeRepr.of[tpe] match
+                      case AndType(left, right)
+                          if methodType.paramTypes.nonEmpty && left =:= methodType.param(0) => List(right)
 
-                  case tpe => List(tpe)
+                      case AndType(left, right)
+                          if methodType.paramTypes.nonEmpty && right =:= methodType.param(0) => List(left)
 
-              case '[tpe] => List(TypeRepr.of[tpe])
+                      case tpe => List(tpe)
 
-          case tpe: TypeRepr => throw AssertionError(
-              s"Expected type of Unapply function to be MethodType. Was: ${Printer.TypeReprStructure.show(tpe)}"
-            )
+                  case '[tpe] => List(TypeRepr.of[tpe])
 
-      case pattern =>
-        throw AssertionError(s"Expected pattern of CaseDef to be either Alternative, TypedOrTest, Bind or Unapply. " +
-          s"Was: ${Printer.TreeStructure.show(pattern)}")
+              case tpe: TypeRepr => report.errorAndAbort(
+                  s"Expected type of Unapply function to be MethodType. Was: ${Printer.TypeReprStructure.show(tpe)}"
+                )
+
+          case pattern =>
+            report.errorAndAbort(s"Expected pattern of CaseDef to be either Alternative, TypedOrTest, Bind or Unapply. " +
+              s"Was: ${Printer.TreeStructure.show(pattern)}")
+      catch
+        // Better error message for compiler bug. As usual the compiler is leaking internal implementation classes of Type
+        // and then failing to match on them. This bug occurs when a CaseDef has a type error.
+        case e: MatchError if e.getMessage().contains("dotty.tools.dotc.core.Types$PreviousErrorType") =>
+          report.errorAndAbort("Macro could not be executed due to a previous error " +
+                                 "in the match expression. Fix other errors first.",
+                               diagnosticPosition)
 
     val caseDefTypes = caseDefs.flatMap { caseDef =>
       if caseDef.guard.isDefined then List()
@@ -354,10 +380,7 @@ object HkdFor extends Dynamic:
 
       report.warning(
         s"Match may not be exhaustive.\n\nIt would fail on case: $casesString",
-        Position(
-          self.asTerm.pos.sourceFile,
-          start = expr.asTerm.pos.start - ("matchExhaustively".length + 1),
-          end = expr.asTerm.pos.start + 1)
+        diagnosticPosition
       )
 
     '{ $expr($self) }
@@ -408,7 +431,6 @@ object HkdFor extends Dynamic:
       // will be recognized as =:= to the opaque type.
     }
 
-  // noinspection RedundantClassParam
   class RefinementHelper[T] private ():
     // ^ Note: must be a class and not trait, so that it can be instantiated and cast in quoted code without generating
     // an anonymous class with its own Symbol that would be remembered by the instance.
@@ -501,7 +523,6 @@ object HkdFor extends Dynamic:
       override type FieldCount = Tuple.Size[m.MirroredElemTypes]
       override val fieldCount: FieldCount = constValue[FieldCount]
 
-  // noinspection ScalaUnnecessaryParentheses
   inline given makeFullyAppliedProductMirror[T, F[_]](using
       m: Mirror.ProductOf[T],
       h: FullyAppliedProductMirrorHelper[T, F],
@@ -527,7 +548,6 @@ object HkdFor extends Dynamic:
       )
   }
 
-  // noinspection ScalaUnnecessaryParentheses
   inline given makePartiallyAppliedProductMirror[T](using
       m: Mirror.ProductOf[T],
       tClass: ClassTag[T]
@@ -569,7 +589,6 @@ object HkdFor extends Dynamic:
       override type CasesCount = Tuple.Size[m.MirroredElemTypes]
       override val casesCount: CasesCount = constValue[CasesCount]
 
-  // noinspection ScalaUnnecessaryParentheses
   inline given makeFullyAppliedCoproductMirror[T, F[_]](using
       m: Mirror.SumOf[T],
       h: FullyAppliedCoproductMirrorHelper[T, F],
@@ -603,7 +622,6 @@ object HkdFor extends Dynamic:
       }
   }
 
-  // noinspection ScalaUnnecessaryParentheses
   inline given makePartiallyAppliedCoproductMirror[T](using
       m: Mirror.SumOf[T],
       casesClassTags: K0.CoproductInstances[TypeTag, T]
@@ -643,7 +661,6 @@ object HkdFor extends Dynamic:
     * because we need wildcards)
     */
   class TypeTag[T] private (private val impl: izumi.reflect.Tag[T]) extends AnyVal:
-    // noinspection NoTargetNameAnnotationForOperatorLikeDefinition
     infix def <:<(tt: TypeTag[?]): Boolean = impl <:< tt.impl
 
   object TypeTag:
@@ -667,7 +684,7 @@ transparent private class HkdForImpl[+T](elems: (String, Any)*)(using
   private val fields = Array.from(elems.map(_._2))
 
   override def canEqual(that: Any): Boolean = that match
-    case that: HkdForImpl[?] => that.tClass == this.tClass
+    case that: HkdForImpl[?] => (that.tClass == this.tClass)
     case _                   => false
 
   override def equals(that: Any): Boolean = that match
