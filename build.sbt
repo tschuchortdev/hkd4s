@@ -45,17 +45,16 @@ lazy val root = (project in file("."))
     ).flatten,
     libraryDependencies ++= Seq(
       "org.typelevel" %% "cats-core" % "2.12.0",
-      "org.typelevel" %% "alleycats-core" % "2.12.0",
-      "org.typelevel" %% "mouse" % "1.2.3", // helper functions
-      "org.typelevel" %% "kittens" % "3.3.0", // type class derivation
-      "org.typelevel" %% "cats-collections-core" % "0.9.8",
+      "org.typelevel" %% "alleycats-core" % "2.12.0", // Needed for Pure type class
       "org.typelevel" %% "shapeless3-deriving" % "3.4.1",
-      "org.typelevel" %% "shapeless3-typeable" % "3.4.1",
-      "dev.zio" %% "izumi-reflect" % "2.3.9"
+      "dev.zio" %% "izumi-reflect" % "2.3.10"
     ),
     // Test dependencies
     libraryDependencies ++= Seq(
-      "org.scalameta" %% "munit" % "1.0.0"
+      "org.scalameta" %% "munit" % "1.0.0",
+      "org.typelevel" %% "mouse" % "1.3.1", // helper functions
+      "org.typelevel" %% "kittens" % "3.3.0", // type class derivation
+      "org.typelevel" %% "cats-collections-core" % "0.9.8",
     ).map(_ % Test),
     Test / parallelExecution := true
   )
