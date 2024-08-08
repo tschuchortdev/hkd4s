@@ -122,7 +122,7 @@ inThisBuild(List(
   }
 ))
 
-private def makeVersionString(gitOutput: Option[sbtdynver.GitDescribeOutput], date: java.util.Date): String = {
+def makeVersionString(gitOutput: Option[sbtdynver.GitDescribeOutput], date: java.util.Date): String = {
   gitOutput match {
     // isTag == previous git tag was found, must not be exactly at this commit
     case Some(gitOutput) if gitOutput.ref.isTag =>

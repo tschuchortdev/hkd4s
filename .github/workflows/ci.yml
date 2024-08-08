@@ -48,6 +48,8 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # needed for sbt-dynver to load all tags
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
