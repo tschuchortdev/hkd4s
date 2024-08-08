@@ -72,6 +72,12 @@ jobs:
           IS_SNAPSHOT_VERSION=$(sbt "print isSnapshot" --error -Dsbt.log.noformat=true | tail -n 1)
           echo "IS_SNAPSHOT_VERSION=$IS_SNAPSHOT_VERSION"
           echo "IS_SNAPSHOT_VERSION=$IS_SNAPSHOT_VERSION" >> "$GITHUB_ENV"
+          cat $GITHUB_ENV > env.txt
+      - uses: actions/upload-artifact@v2
+        if: failure()
+        with:
+          name: env.txt
+          path: env.txt
       - name: Publish to Sonatype Nexus
         shell: bash
         run: |
