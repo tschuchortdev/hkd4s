@@ -1,5 +1,10 @@
 # hkd4s: Higher Kinded Data in Scala 3
 
+-----------
+
+![Maven Central Version](https://img.shields.io/maven-central/v/com.github.tschuchortdev/hkd4s_3)
+
+
 hkd4s is a Scala 3 library that provides basic functions and typeclasses for working with higher kinded data. Higher kinded data is an idiom, most commonly known among Haskell library authors, where a data type is declared with a higher kinded type parameter `F[_]` and every field of the type is wrapped in `F[_]`:
 
 ```scala
@@ -245,4 +250,12 @@ It is usually not necessary to specify the `F` parameter when pattern matching, 
 
 ## Installation
 
+Add this to your build.sbt:
 
+```scala
+libraryDependencies ++= Seq(
+  "com.github.tschuchortdev" %% "hkd4s" % "<version>"
+)
+```
+
+where `<version>` is the latest published release that you can find [here](https://github.com/tschuchortdev/hkd4s/releases).
