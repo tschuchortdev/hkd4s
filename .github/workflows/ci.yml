@@ -42,6 +42,9 @@ jobs:
     if: (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags')) && 
       (github.event_name == 'push' || github.event_name == 'create') && 
       github.repository == 'tschuchortdev/hkd4s'
+    concurrency:
+      group: publishing
+      cancel-in-progress: true
     env:
       SONATYPE_NEXUS_USERNAME: ${{ secrets.SONATYPE_NEXUS_USERNAME }}
       SONATYPE_NEXUS_PASSWORD: ${{ secrets.SONATYPE_NEXUS_PASSWORD }}
@@ -86,12 +89,11 @@ jobs:
             echo EOF
           } >> "$GITHUB_ENV"
       - name: Make release on Github
-        uses: marvinpinto/action-automatic-releases@latest
+        uses: softprops/action-gh-release@v2
         if: ${{ env.IS_SNAPSHOT_VERSION == 'false' }}
         with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          automatic_release_tag: v${{ env.VERSION_NAME }}
-          prerelease: false
-          title: ${{ env.VERSION_NAME }}
+          name: ${{ env.VERSION_NAME }}
+          tag_name: v${{ env.VERSION_NAME }}
           files: | 
             ${{ env.ARTIFACT_PATHS }}
+          fail_on_unmatched_files: true
