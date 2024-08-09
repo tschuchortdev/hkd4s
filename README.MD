@@ -259,3 +259,4 @@ libraryDependencies ++= Seq(
 ```
 
 where `<version>` is the latest published release that you can find [here](https://github.com/tschuchortdev/hkd4s/releases).
+
