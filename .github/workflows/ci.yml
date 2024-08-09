@@ -90,7 +90,6 @@ jobs:
         if: ${{ env.IS_SNAPSHOT_VERSION == 'false' }}
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          automatic_release_tag: ${{ env.VERSION_NAME }}
           prerelease: false
           title: ${{ env.VERSION_NAME }}
           files: | 
