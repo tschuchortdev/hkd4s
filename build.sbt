@@ -17,11 +17,11 @@ ThisBuild / scalacOptions ++= Seq(
   "-language:experimental.macros",
   "-language:implicitConversions",
   "-language:higherKinds",
-  "-language:namedTypeArguments",
-  "-language:saferExceptions",
+  //"-language:namedTypeArguments",
+  //"-language:saferExceptions",
   "-language:dynamics",
-  "-language:numericLiterals",
-  // "-Ykind-projector:underscores",
+  //"-language:numericLiterals",
+  "-Xkind-projector:underscores",
   "-unchecked",
   // "-Ysafe-init", // Note: causes warnings when used with Shapeless 3 recursive derivation
   // "-Yexplicit-nulls", // Make reference types non-nullable: String != String|Null
@@ -99,6 +99,7 @@ lazy val root = (project in file("."))
       "org.typelevel" %% "mouse" % "1.3.1", // helper functions
       "org.typelevel" %% "kittens" % "3.3.0", // type class derivation
       "org.typelevel" %% "cats-collections-core" % "0.9.8",
+      "org.typelevel" %% "cats-effect" % "3.5.7"
     ).map(_ % Test),
 
     Test / parallelExecution := true

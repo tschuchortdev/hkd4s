@@ -293,10 +293,13 @@ object TraverseK {
   given adtTraverseK[D[_[_]]](using pInst: K11.Instances[TraverseK, D]): TraverseK[D] with {
     extension [F[_]](df: D[F])
       override def traverseK[G[+_], H[_]](f: [A] => F[A] => G[H[A]])(using Applicative[G]): G[D[H]] =
-        pInst.traverse(df)(Applicative[G].map.asInstanceOf[shapeless3.deriving.MapF[G]])(
-          Applicative[G].pure.asInstanceOf[shapeless3.deriving.Pure[G]]
+        pInst.traverse(df)(
+          ([A, B] => (ga: G[A], ab: A => B) => Applicative[G].map(ga)(ab)).asInstanceOf[shapeless3.deriving.MapF[G]]
         )(
-          Applicative[G].ap.asInstanceOf[shapeless3.deriving.Ap[G]])(
+          [A] => (a: A) => Applicative[G].pure(a)
+        )(
+          [A, B] => (gg: G[A => B], ga: G[A]) => Applicative[G].ap(gg)(ga)
+        )(
           [t[_[_]]] => (fieldTraversableK: TraverseK[t], field: t[F]) => fieldTraversableK.traverseK(field)(f)
         )
   }

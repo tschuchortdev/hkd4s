@@ -1,7 +1,12 @@
 package com.tschuchort.hkd
 
-import cats.Show
+import cats.{Applicative, Id, Show}
 import cats.data.Const
+import cats.data.Writer
+import cats.effect.IO
+import com.tschuchort.hkd.internal.`.`
+import cats.syntax.all
+import cats.effect.unsafe.implicits.global
 
 class TypeclassesTest extends munit.FunSuite {
   sealed trait FooHK[F[_]]
@@ -109,4 +114,13 @@ class TypeclassesTest extends munit.FunSuite {
       case _ => throw AssertionError(s"Expected Contra21HK, was: $mapped")
   }
 
+  test("TraverseK sequences effects") {
+    case class BarHK[F[_]](a: F[Int], b: F[Int], c: F[Int])
+    var res = ""
+    // Have to use IO here because Writer won't type-check for some reason
+    val bar = BarHK[IO `.` Option](IO { res += "1"; Some(1) }, IO { res += "2"; Some(2) }, IO { res += "3"; Some(3) })
+    val bar2 = TraverseK[BarHK].sequenceK(bar).unsafeRunSync()
+    assertEquals(res, "123")
+    assertEquals(bar2, BarHK[Option](Some(1), Some(2), Some(3)))
+  }
 }
