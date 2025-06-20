@@ -1,10 +1,9 @@
 package com.tschuchort.hkd
 
-import cats.{Applicative, Id, Show}
+import cats.Show
 import cats.data.Const
-import cats.data.Writer
 import cats.effect.IO
-import com.tschuchort.hkd.internal.`.`
+import internal.`.`
 import cats.syntax.all
 import cats.effect.unsafe.implicits.global
 
@@ -50,11 +49,21 @@ class TypeclassesTest extends munit.FunSuite {
 
   test("FunctorK maps product of functions") {
     case class BarHK[F[_]](f: Int => F[Int])
-    val bar = BarHK[Option]((x: Int) => None)
+    val bar = BarHK[Option]((x: Int) => Some(x))
     val mapped = FunctorK[BarHK].mapK(bar)([A] => (a: Option[A]) => a.toList)
     assertEquals(
       mapped.f(1),
       bar.f(1).toList
+    )
+  }
+
+  test("FunctorK maps product of functions with multiple args") {
+    case class BarHK[F[_]](f: Int => Int => Int => F[String])
+    val bar = BarHK[Option]((x1: Int) => (x2: Int) => (x3: Int) => Some(s"$x1$x2$x3"))
+    val mapped = FunctorK[BarHK].mapK(bar)([A] => (a: Option[A]) => a.toList)
+    assertEquals(
+      mapped.f(1)(2)(3),
+      bar.f(1)(2)(3).toList
     )
   }
 

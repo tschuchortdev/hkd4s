@@ -7,8 +7,7 @@ import scala.compiletime.{constValue, summonInline}
 import internal.{ArrayProduct, `*`, `.`}
 
 import alleycats.Pure
-import com.tschuchort.hkd
-import com.tschuchort.hkd.FunctorK.{MapKGiven2Helper, MapKGiven3Helper, MapKGiven4Helper, MapKGivenHelper}
+import FunctorK.{MapKGiven2Helper, MapKGiven3Helper, MapKGiven4Helper, MapKGivenHelper}
 
 import scala.deriving.Mirror
 import scala.util.chaining.*
@@ -30,6 +29,7 @@ trait FunctorK[D[_[_]]] extends InvariantK[D] {
   }
 }
 
+//noinspection DuplicatedCode
 object FunctorK {
   inline def derived[D[_[_]]]: FunctorK[D] = apply
   inline def apply[D[_[_]]]: FunctorK[D] = summonInline
@@ -39,7 +39,86 @@ object FunctorK {
   }
 
   given functionFunctorK[A, P]: FunctorK[[F[_]] =>> P => F[A]] with {
-    extension [F[_]](df: P => F[A]) override def mapK[G[_]](fg: [B] => F[B] => G[B]): P => G[A] = { (p: P) => fg(df(p)) }
+    extension [F[_]](df: P => F[A])
+      override def mapK[G[_]](fg: [B] => F[B] => G[B]): P => G[A] =
+        p => fg(df(p))
+  }
+
+  given function2FunctorK[A, P1, P2]: FunctorK[[F[_]] =>> P1 => P2 => F[A]] with {
+    extension [F[_]](df: P1 => P2 => F[A])
+      override def mapK[G[_]](fg: [B] => F[B] => G[B]): P1 => P2 => G[A] =
+        p1 => p2 => fg(df(p1)(p2))
+  }
+
+  given function3FunctorK[A, P1, P2, P3]: FunctorK[[F[_]] =>> P1 => P2 => P3 => F[A]] with {
+    extension [F[_]](df: P1 => P2 => P3 => F[A])
+      override def mapK[G[_]](fg: [B] => F[B] => G[B]): P1 => P2 => P3 => G[A] =
+        p1 => p2 => p3 => fg(df(p1)(p2)(p3))
+  }
+
+  given function4FunctorK[A, P1, P2, P3, P4]: FunctorK[[F[_]] =>> P1 => P2 => P3 => P4 => F[A]] with {
+    extension [F[_]](df: P1 => P2 => P3 => P4 => F[A])
+      override def mapK[G[_]](fg: [B] => F[B] => G[B]): P1 => P2 => P3 => P4 => G[A] =
+        p1 => p2 => p3 => p4 => fg(df(p1)(p2)(p3)(p4))
+  }
+
+  given function5FunctorK[A, P1, P2, P3, P4, P5]: FunctorK[[F[_]] =>> P1 => P2 => P3 => P4 => P5 => F[A]] with {
+    extension [F[_]](df: P1 => P2 => P3 => P4 => P5 => F[A])
+      override def mapK[G[_]](fg: [B] => F[B] => G[B]): P1 => P2 => P3 => P4 => P5 => G[A] =
+        p1 => p2 => p3 => p4 => p5 => fg(df(p1)(p2)(p3)(p4)(p5))
+  }
+
+  given function6FunctorK[A, P1, P2, P3, P4, P5, P6]: FunctorK[[F[_]] =>> P1 => P2 => P3 => P4 => P5 => P6 => F[A]] with {
+    extension [F[_]](df: P1 => P2 => P3 => P4 => P5 => P6 => F[A])
+      override def mapK[G[_]](fg: [B] => F[B] => G[B]): P1 => P2 => P3 => P4 => P5 => P6 => G[A] =
+        p1 => p2 => p3 => p4 => p5 => p6 => fg(df(p1)(p2)(p3)(p4)(p5)(p6))
+  }
+
+  given function7FunctorK[A, P1, P2, P3, P4, P5, P6, P7]: FunctorK[[F[_]] =>> P1 => P2 => P3 => P4 => P5 => P6 => P7 => F[A]]
+  with {
+    extension [F[_]](df: P1 => P2 => P3 => P4 => P5 => P6 => P7 => F[A])
+      override def mapK[G[_]](fg: [B] => F[B] => G[B]): P1 => P2 => P3 => P4 => P5 => P6 => P7 => G[A] =
+        p1 => p2 => p3 => p4 => p5 => p6 => p7 => fg(df(p1)(p2)(p3)(p4)(p5)(p6)(p7))
+  }
+
+  given function8FunctorK[A, P1, P2, P3, P4, P5, P6, P7, P8]
+      : FunctorK[[F[_]] =>> P1 => P2 => P3 => P4 => P5 => P6 => P7 => P8 => F[A]] with {
+    extension [F[_]](df: P1 => P2 => P3 => P4 => P5 => P6 => P7 => P8 => F[A])
+      override def mapK[G[_]](fg: [B] => F[B] => G[B]): P1 => P2 => P3 => P4 => P5 => P6 => P7 => P8 => G[A] =
+        p1 => p2 => p3 => p4 => p5 => p6 => p7 => p8 => fg(df(p1)(p2)(p3)(p4)(p5)(p6)(p7)(p8))
+  }
+
+  given function9FunctorK[A, P1, P2, P3, P4, P5, P6, P7, P8, P9]
+      : FunctorK[[F[_]] =>> P1 => P2 => P3 => P4 => P5 => P6 => P7 => P8 => P9 => F[A]] with {
+    extension [F[_]](df: P1 => P2 => P3 => P4 => P5 => P6 => P7 => P8 => P9 => F[A])
+      override def mapK[G[_]](fg: [B] => F[B] => G[B]): P1 => P2 => P3 => P4 => P5 => P6 => P7 => P8 => P9 => G[A] =
+        p1 => p2 => p3 => p4 => p5 => p6 => p7 => p8 => p9 => fg(df(p1)(p2)(p3)(p4)(p5)(p6)(p7)(p8)(p9))
+  }
+
+  given function10FunctorK[A, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10]
+      : FunctorK[[F[_]] =>> P1 => P2 => P3 => P4 => P5 => P6 => P7 => P8 => P9 => P10 => F[A]] with {
+    extension [F[_]](df: P1 => P2 => P3 => P4 => P5 => P6 => P7 => P8 => P9 => P10 => F[A])
+      override def mapK[G[_]](fg: [B] => F[B] => G[B]): P1 => P2 => P3 => P4 => P5 => P6 => P7 => P8 => P9 => P10 => G[A] =
+        p1 => p2 => p3 => p4 => p5 => p6 => p7 => p8 => p9 => p10 => fg(df(p1)(p2)(p3)(p4)(p5)(p6)(p7)(p8)(p9)(p10))
+  }
+
+  given function11FunctorK[A, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11]
+      : FunctorK[[F[_]] =>> P1 => P2 => P3 => P4 => P5 => P6 => P7 => P8 => P9 => P10 => P11 => F[A]] with {
+    extension [F[_]](df: P1 => P2 => P3 => P4 => P5 => P6 => P7 => P8 => P9 => P10 => P11 => F[A])
+      override def mapK[G[_]](fg: [B] => F[B] => G[B]): P1 => P2 => P3 => P4 => P5 => P6 => P7 => P8 => P9 => P10 => P11 => G[A] =
+        p1 => p2 => p3 => p4 => p5 => p6 => p7 => p8 => p9 => p10 => p11 => fg(df(p1)(p2)(p3)(p4)(p5)(p6)(p7)(p8)(p9)(p10)(p11))
+  }
+
+  given function12FunctorK[A, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11, P12]: FunctorK[
+    [F[_]] =>> P1 => P2 => P3 => P4 => P5 => P6 => P7 => P8 => P9 => P10 => P11 => P12 => F[A]
+  ] with {
+    extension [F[_]](df: P1 => P2 => P3 => P4 => P5 => P6 => P7 => P8 => P9 => P10 => P11 => P12 => F[A])
+      override def mapK[G[_]](fg: [B] => F[B] => G[B])
+          : P1 => P2 => P3 => P4 => P5 => P6 => P7 => P8 => P9 => P10 => P11 => P12 => G[A] =
+        p1 =>
+          p2 =>
+            p3 =>
+              p4 => p5 => p6 => p7 => p8 => p9 => p10 => p11 => p12 => fg(df(p1)(p2)(p3)(p4)(p5)(p6)(p7)(p8)(p9)(p10)(p11)(p12))
   }
 
   given phantomFunctorK[A]: FunctorK[[_[_]] =>> A] with {
@@ -112,7 +191,7 @@ object ContravariantK {
 
   given functionContravariantK[A, B]: ContravariantK[[F[_]] =>> F[A] => B] with {
     extension [F[_]](df: F[A] => B)
-      override def contramapK[G[_]](gf: [C] => G[C] => F[C]): G[A] => B = { x => df(gf(x)) }
+      override def contramapK[G[_]](gf: [C] => G[C] => F[C]): G[A] => B = { ga => df(gf(ga)) }
   }
 
   given phantomContravariantK[A]: ContravariantK[[_[_]] =>> A] with {
