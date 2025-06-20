@@ -29,6 +29,7 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
         cache: 'sbt'
+    - uses: sbt/setup-sbt@v1
     - name: Run tests
       run: sbt test
 
@@ -63,6 +64,7 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
           cache: 'sbt'
+      - uses: sbt/setup-sbt@v1
       - name: Check if snapshot version
         shell: bash
         run: |
